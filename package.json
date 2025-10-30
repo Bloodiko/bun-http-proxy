@@ -1,0 +1,21 @@
+{
+  "name": "bun-http-proxy",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build:types": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "elysia": "^1.4.13",
+    "pkijs": "^3.3.2"
+  }
+  ,
+  "types": "dist/index.d.ts"
+}
