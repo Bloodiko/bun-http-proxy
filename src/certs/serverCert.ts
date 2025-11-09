@@ -1,5 +1,12 @@
 import * as asn1js from "asn1js";
-import { CertificationRequest, AttributeTypeAndValue, Extension, Certificate, BasicConstraints, Attribute } from "pkijs";
+import {
+	Attribute,
+	AttributeTypeAndValue,
+	BasicConstraints,
+	Certificate,
+	CertificationRequest,
+	Extension,
+} from "pkijs";
 import { generateRootCA } from "./rootCA";
 
 export interface CSRResult {
@@ -14,6 +21,11 @@ export interface SignedCertificateResult {
 	certificatePEM: string;
 	certificateRaw: ArrayBuffer;
 	certificate: Certificate;
+}
+
+export interface FullChainResult {
+	privateKeyPEM: string;
+	fullChainPEM: string;
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer) {
@@ -38,10 +50,16 @@ function toPEM(buffer: ArrayBuffer, label: string) {
  */
 export async function createCSR(domain: string): Promise<CSRResult> {
 	const cryptoObj = crypto;
-	if (!cryptoObj || !cryptoObj.subtle) throw new Error("WebCrypto not available");
+	if (!cryptoObj || !cryptoObj.subtle) {
+		throw new Error("WebCrypto not available");
+	}
 
 	// Generate key pair
-	const keys = await cryptoObj.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+	const keys = await cryptoObj.subtle.generateKey(
+		{ name: "ECDSA", namedCurve: "P-256" },
+		true,
+		["sign", "verify"],
+	);
 	const privateKey = keys.privateKey as CryptoKey;
 	const publicKey = keys.publicKey as CryptoKey;
 
@@ -49,7 +67,10 @@ export async function createCSR(domain: string): Promise<CSRResult> {
 	csr.version = 0;
 
 	// Subject: CN=domain
-	const cn = new AttributeTypeAndValue({ type: "2.5.4.3", value: new asn1js.Utf8String({ value: domain }) });
+	const cn = new AttributeTypeAndValue({
+		type: "2.5.4.3",
+		value: new asn1js.Utf8String({ value: domain }),
+	});
 	csr.subject.typesAndValues.push(cn as any);
 
 	// subjectPublicKeyInfo
@@ -57,16 +78,35 @@ export async function createCSR(domain: string): Promise<CSRResult> {
 
 	// Add SAN extension as an attribute (pkijs requires requestAttributes)
 	// Build SubjectAltName (GeneralNames) -> dNSName (tag [2], IA5String)
-	const dnsName = new asn1js.Primitive({ idBlock: { tagClass: 3, tagNumber: 2 }, valueHex: new TextEncoder().encode(domain).buffer });
-	const sanSequence = new asn1js.Sequence({ value: [dnsName] });
+	// Include both the domain and wildcard (*.domain)
+	const dnsName = new asn1js.Primitive({
+		idBlock: { tagClass: 3, tagNumber: 2 },
+		valueHex: new TextEncoder().encode(domain).buffer,
+	});
+	const wildcardDnsName = new asn1js.Primitive({
+		idBlock: { tagClass: 3, tagNumber: 2 },
+		valueHex: new TextEncoder().encode(`*.${domain}`).buffer,
+	});
+	const sanSequence = new asn1js.Sequence({
+		value: [dnsName, wildcardDnsName],
+	});
 
 	// Create an Extension object for SubjectAltName
-	const sanExt = new Extension({ extnID: "2.5.29.17", critical: false, extnValue: sanSequence.toBER(false) });
+	const sanExt = new Extension({
+		extnID: "2.5.29.17",
+		critical: false,
+		extnValue: sanSequence.toBER(false),
+	});
 
 	// The extensionRequest attribute (1.2.840.113549.1.9.14) contains a SET with a SEQUENCE of extensions
-	const extensionsSequence = new asn1js.Sequence({ value: [sanExt.toSchema()] });
+	const extensionsSequence = new asn1js.Sequence({
+		value: [sanExt.toSchema()],
+	});
 
-	const attribute = new Attribute({ type: "1.2.840.113549.1.9.14", values: [extensionsSequence] });
+	const attribute = new Attribute({
+		type: "1.2.840.113549.1.9.14",
+		values: [extensionsSequence],
+	});
 	csr.attributes = csr.attributes || [];
 	csr.attributes.push(attribute);
 
@@ -87,9 +127,15 @@ export async function createCSR(domain: string): Promise<CSRResult> {
 /**
  * Sign a CSR with the given root CA (result from generateRootCA) and return a certificate.
  */
-export async function signCSR(rootCA: Awaited<ReturnType<typeof generateRootCA>>, csr: CertificationRequest, validityDays = 365): Promise<SignedCertificateResult> {
+export async function signCSR(
+	rootCA: Awaited<ReturnType<typeof generateRootCA>>,
+	csr: CertificationRequest,
+	validityDays = 365,
+): Promise<SignedCertificateResult> {
 	const cryptoObj: any = (globalThis as any).crypto;
-	if (!cryptoObj || !cryptoObj.subtle) throw new Error("WebCrypto not available");
+	if (!cryptoObj || !cryptoObj.subtle) {
+		throw new Error("WebCrypto not available");
+	}
 
 	const { certificate: caCert, privateKey: caKey } = rootCA;
 
@@ -110,25 +156,37 @@ export async function signCSR(rootCA: Awaited<ReturnType<typeof generateRootCA>>
 
 	// BasicConstraints - not a CA
 	const basic = new BasicConstraints({ cA: false });
-	cert.extensions = [new Extension({ extnID: "2.5.29.19", critical: true, extnValue: basic.toSchema().toBER(false) })] as any;
+	cert.extensions = [
+		new Extension({
+			extnID: "2.5.29.19",
+			critical: true,
+			extnValue: basic.toSchema().toBER(false),
+		}),
+	] as any;
 
 	// Copy requested extensions from CSR (extensionRequest attribute OID 1.2.840.113549.1.9.14)
 	try {
-		const extReqAttr = (csr.attributes || []).find((a: any) => a.type === "1.2.840.113549.1.9.14");
+		const extReqAttr = (csr.attributes || []).find((a: any) =>
+			a.type === "1.2.840.113549.1.9.14"
+		);
 		if (extReqAttr && extReqAttr.values && extReqAttr.values.length) {
 			// The attribute value is usually a SET with a SEQUENCE of Extensions
 			const first = extReqAttr.values[0];
 			// unwrap possible Set/Sequence wrappers to get at Extension ASN.1 sequences
 			const extSeqs: any[] = [];
-			if (first.constructor && first.constructor.name === 'Set') {
+			if (first.constructor && first.constructor.name === "Set") {
 				// Set -> valueBlock.value -> [ Sequence(...) ]
 				for (const v of (first as any).valueBlock.value) {
-					if (v.constructor && v.constructor.name === 'Sequence') {
+					if (v.constructor && v.constructor.name === "Sequence") {
 						for (const s of v.valueBlock.value) extSeqs.push(s);
 					}
 				}
-			} else if (first.constructor && first.constructor.name === 'Sequence') {
-				for (const s of (first as any).valueBlock.value) extSeqs.push(s);
+			} else if (
+				first.constructor && first.constructor.name === "Sequence"
+			) {
+				for (const s of (first as any).valueBlock.value) {
+					extSeqs.push(s);
+				}
 			} else if (Array.isArray(first)) {
 				for (const item of first) extSeqs.push(item);
 			} else {
@@ -143,12 +201,12 @@ export async function signCSR(rootCA: Awaited<ReturnType<typeof generateRootCA>>
 					cert.extensions.push(ext as any);
 				} catch (e) {
 					// ignore malformed extension parsing
-					console.warn('Failed to parse extension from CSR', e);
+					console.warn("Failed to parse extension from CSR", e);
 				}
 			}
 		}
 	} catch (e) {
-		console.warn('Failed to copy extensions from CSR', e);
+		console.warn("Failed to copy extensions from CSR", e);
 	}
 
 	// Sign certificate with CA private key
@@ -157,8 +215,27 @@ export async function signCSR(rootCA: Awaited<ReturnType<typeof generateRootCA>>
 	const certRaw = cert.toSchema(true).toBER(false);
 	const certPEM = toPEM(certRaw, "CERTIFICATE");
 
-	return { certificatePEM: certPEM, certificateRaw: certRaw, certificate: cert };
+	return {
+		certificatePEM: certPEM,
+		certificateRaw: certRaw,
+		certificate: cert,
+	};
 }
 
-export default { createCSR, signCSR };
+/**
+ * Generate a domain certificate with full chain (server cert + root CA).
+ * Returns private key and full chain PEM suitable for Bun.serve.
+ */
+export async function signCSRWithFullChain(
+	rootCA: Awaited<ReturnType<typeof generateRootCA>>,
+	csr: CertificationRequest,
+	privateKeyPEM: string,
+	validityDays = 365,
+): Promise<FullChainResult> {
+	const { certificatePEM } = await signCSR(rootCA, csr, validityDays);
+	const fullChainPEM = `${certificatePEM}${rootCA.certificatePEM}`;
 
+	return { privateKeyPEM, fullChainPEM };
+}
+
+export default { createCSR, signCSR, signCSRWithFullChain };

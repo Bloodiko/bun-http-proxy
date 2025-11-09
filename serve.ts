@@ -1,30 +1,49 @@
-
-import {generateRootCA} from "./src/certs/rootCA";
-import {createCSR, signCSR} from "./src/certs/serverCert";
+import { generateRootCA } from "./src/certs/rootCA";
+import { createCSR, signCSRWithFullChain } from "./src/certs/serverCert";
 import { Certificate } from "pkijs";
 
 const servers = new Map<string, Bun.Server<unknown>>();
+
+function pemToDer(pem: string): ArrayBuffer {
+  // Remove PEM headers and footers, strip whitespace
+  const base64 = pem
+    .replace(/-----BEGIN [^-]+-----/, "")
+    .replace(/-----END [^-]+-----/, "")
+    .replace(/\s/g, "");
+
+  // Base64 decode to binary
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
 
 async function loadRootCA() {
   try {
     const certificatePEM = await Bun.file("./certs/rootCA.crt").text();
     const privateKeyPEM = await Bun.file("./certs/rootCA.key").text();
 
-    const rootCA = Certificate.fromBER(
-      Buffer.from(
-        certificatePEM,
-        "utf8"
-      )
+    // Convert PEM to DER before parsing
+    const certDER = pemToDer(certificatePEM);
+    const certificate = Certificate.fromBER(certDER);
+
+    // Convert PEM to DER and import private key
+    const keyDER = pemToDer(privateKeyPEM);
+    const privateKey = await crypto.subtle.importKey(
+      "pkcs8",
+      keyDER,
+      { name: "ECDSA", namedCurve: "P-256" },
+      true,
+      ["sign"],
     );
 
-    // privateKey as cryptoKey
-    const privateKey = await crypto.subtle.importKey("pkcs8", Buffer.from(privateKeyPEM, "utf8"), { name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
-
-    return { certificatePEM, privateKeyPEM, privateKey, certificate: rootCA };
+    return { certificatePEM, privateKeyPEM, privateKey, certificate };
   } catch (error) {
     console.error("Error loading root CA:", error);
     const rootCA = await generateRootCA("CodikyoProxyRoot", 10);
-    
+
     return rootCA;
   }
 }
@@ -36,13 +55,17 @@ console.log("Root CA certificate written to ./certs/rootCA.crt");
 Bun.file("./certs/rootCA.key").write(rootCA.privateKeyPEM);
 console.log("Root CA private key written to ./certs/rootCA.key");
 
-async function createServerForDomain(domain: string): Promise<Bun.Server<unknown>> {
-
-  const { privateKeyPEM, csr, csrPEM } = await createCSR(domain);
+async function createServerForDomain(
+  domain: string,
+): Promise<Bun.Server<unknown>> {
+  const { privateKeyPEM, csr } = await createCSR(domain);
   console.log(`Created CSR for domain: ${domain}`);
-  const { certificatePEM, certificate } = await signCSR(rootCA, csr, 365);
-
-  const fullChainPEM = `${certificatePEM}\n${rootCA.certificatePEM}`;
+  const { fullChainPEM } = await signCSRWithFullChain(
+    rootCA,
+    csr,
+    privateKeyPEM,
+    365,
+  );
   console.log(fullChainPEM);
 
   const server = Bun.serve({
@@ -66,7 +89,9 @@ async function createServerForDomain(domain: string): Promise<Bun.Server<unknown
     },
   });
   servers.set(domain, server);
-  console.log(`Created HTTPS server for domain: https://${domain}:${server.port}`);
+  console.log(
+    `Created HTTPS server for domain: https://${domain}:${server.port}`,
+  );
   return server;
 }
 
@@ -83,8 +108,8 @@ const onConnectRequest = async (request: Request): Promise<Response> => {
 Bun.serve({
   port: 8080,
   async fetch(req) {
-    console.log(req)
+    console.log(req);
 
     return await onConnectRequest(req);
   },
-})
+});

@@ -8,7 +8,7 @@
     "target": "bun run target/target.bun.ts",
     "test": "bun test",
     "test:target": "bun test tests/target.test.ts",
-    "curl:proxy": "curl -i --proxy \"http://localhost:8080\" https://localhost:3001/"
+    "curl:proxy": "curl -i --proxy \"http://localhost:8080\" http://localhost:3001/"
   },
   "devDependencies": {
     "@types/bun": "latest",
