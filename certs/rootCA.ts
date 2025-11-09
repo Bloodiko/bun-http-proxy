@@ -1,12 +1,10 @@
 import * as asn1js from "asn1js";
-import { Certificate, AttributeTypeAndValue, BasicConstraints, Extension, setEngine } from "pkijs";
+import { Certificate, AttributeTypeAndValue, BasicConstraints, Extension } from "pkijs";
 
 // Minimal type that describes the result of generateRootCA
 export interface RootCAResult {
   privateKey: CryptoKey; // PKCS#8 exportable key
-  publicKey: CryptoKey;
   certificate: Certificate;
-  certificateRaw: ArrayBuffer; // DER encoded certificate
   certificatePEM: string;
   privateKeyPEM: string; // PKCS#8 PEM
 }
@@ -37,7 +35,7 @@ export async function generateRootCA(
   validityYears: number = 10
 ): Promise<RootCAResult> {
   // Ensure pkijs is wired to the WebCrypto engine
-  const cryptoObj: any = (globalThis as any).crypto;
+  const cryptoObj = crypto;
   if (!cryptoObj || !cryptoObj.subtle) {
     throw new Error("WebCrypto (globalThis.crypto.subtle) not available");
   }
@@ -95,9 +93,9 @@ export async function generateRootCA(
   const basicConstr = new BasicConstraints({ cA: true, pathLenConstraint: 0 });
   certificate.extensions.push(new Extension({ extnID: "2.5.29.19", critical: true, extnValue: basicConstr.toSchema().toBER(false) }));
 
-  // KeyUsage: keyCertSign (bit 5), cRLSign (bit 6)
-  // Bitstring: set bits 5 and 6 -> 0b01100000 = 0x60
-  const keyUsageBitstring = new asn1js.BitString({ valueHex: new Uint8Array([0x60]).buffer });
+  // KeyUsage: 
+  // Digital Signature, Certificate Signing, Off-line CRL Signing, CRL Signing (86)
+  const keyUsageBitstring = new asn1js.BitString({ valueHex: new Uint8Array([0x86]).buffer });
   certificate.extensions.push(new Extension({ extnID: "2.5.29.15", critical: true, extnValue: keyUsageBitstring.toBER(false) }));
 
   // SubjectKeyIdentifier: SHA-1 of public key (SPKI)
@@ -130,9 +128,7 @@ export async function generateRootCA(
 
   return {
     privateKey,
-    publicKey,
     certificate,
-    certificateRaw: certRaw,
     certificatePEM,
     privateKeyPEM,
   };

@@ -37,7 +37,7 @@ function toPEM(buffer: ArrayBuffer, label: string) {
  * Create a CSR for the given domain using ECDSA P-256 and include SAN extension.
  */
 export async function createCSR(domain: string): Promise<CSRResult> {
-	const cryptoObj: any = (globalThis as any).crypto;
+	const cryptoObj = crypto;
 	if (!cryptoObj || !cryptoObj.subtle) throw new Error("WebCrypto not available");
 
 	// Generate key pair
@@ -91,7 +91,7 @@ export async function signCSR(rootCA: Awaited<ReturnType<typeof generateRootCA>>
 	const cryptoObj: any = (globalThis as any).crypto;
 	if (!cryptoObj || !cryptoObj.subtle) throw new Error("WebCrypto not available");
 
-	const { certificate: caCert, privateKey: caKey } = rootCA as any;
+	const { certificate: caCert, privateKey: caKey } = rootCA;
 
 	// Build new certificate
 	const cert = new Certificate();
@@ -111,6 +111,45 @@ export async function signCSR(rootCA: Awaited<ReturnType<typeof generateRootCA>>
 	// BasicConstraints - not a CA
 	const basic = new BasicConstraints({ cA: false });
 	cert.extensions = [new Extension({ extnID: "2.5.29.19", critical: true, extnValue: basic.toSchema().toBER(false) })] as any;
+
+	// Copy requested extensions from CSR (extensionRequest attribute OID 1.2.840.113549.1.9.14)
+	try {
+		const extReqAttr = (csr.attributes || []).find((a: any) => a.type === "1.2.840.113549.1.9.14");
+		if (extReqAttr && extReqAttr.values && extReqAttr.values.length) {
+			// The attribute value is usually a SET with a SEQUENCE of Extensions
+			const first = extReqAttr.values[0];
+			// unwrap possible Set/Sequence wrappers to get at Extension ASN.1 sequences
+			const extSeqs: any[] = [];
+			if (first.constructor && first.constructor.name === 'Set') {
+				// Set -> valueBlock.value -> [ Sequence(...) ]
+				for (const v of (first as any).valueBlock.value) {
+					if (v.constructor && v.constructor.name === 'Sequence') {
+						for (const s of v.valueBlock.value) extSeqs.push(s);
+					}
+				}
+			} else if (first.constructor && first.constructor.name === 'Sequence') {
+				for (const s of (first as any).valueBlock.value) extSeqs.push(s);
+			} else if (Array.isArray(first)) {
+				for (const item of first) extSeqs.push(item);
+			} else {
+				extSeqs.push(first);
+			}
+
+			for (const extSchema of extSeqs) {
+				try {
+					const ext = new Extension({} as any);
+					(ext as any).fromSchema(extSchema);
+					cert.extensions = cert.extensions || [];
+					cert.extensions.push(ext as any);
+				} catch (e) {
+					// ignore malformed extension parsing
+					console.warn('Failed to parse extension from CSR', e);
+				}
+			}
+		}
+	} catch (e) {
+		console.warn('Failed to copy extensions from CSR', e);
+	}
 
 	// Sign certificate with CA private key
 	await cert.sign(caKey, "SHA-256");

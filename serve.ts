@@ -1,10 +1,40 @@
 
 import {generateRootCA} from "./certs/rootCA";
 import {createCSR, signCSR} from "./certs/serverCert";
+import { Certificate } from "pkijs";
 
 const servers = new Map<string, Bun.Server<unknown>>();
 
-const rootCA = await generateRootCA("CodikyoProxyRoot", 10);
+async function loadRootCA() {
+  try {
+    const certificatePEM = await Bun.file("./certs/rootCA.crt").text();
+    const privateKeyPEM = await Bun.file("./certs/rootCA.key").text();
+
+    const rootCA = Certificate.fromBER(
+      Buffer.from(
+        certificatePEM,
+        "utf8"
+      )
+    );
+
+    // privateKey as cryptoKey
+    const privateKey = await crypto.subtle.importKey("pkcs8", Buffer.from(privateKeyPEM, "utf8"), { name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+
+    return { certificatePEM, privateKeyPEM, privateKey, certificate: rootCA };
+  } catch (error) {
+    console.error("Error loading root CA:", error);
+    const rootCA = await generateRootCA("CodikyoProxyRoot", 10);
+    
+    return rootCA;
+  }
+}
+
+const rootCA = await loadRootCA();
+
+Bun.file("./certs/rootCA.crt").write(rootCA.certificatePEM);
+console.log("Root CA certificate written to ./certs/rootCA.crt");
+Bun.file("./certs/rootCA.key").write(rootCA.privateKeyPEM);
+console.log("Root CA private key written to ./certs/rootCA.key");
 
 async function createServerForDomain(domain: string): Promise<Bun.Server<unknown>> {
 
@@ -12,10 +42,13 @@ async function createServerForDomain(domain: string): Promise<Bun.Server<unknown
   console.log(`Created CSR for domain: ${domain}`);
   const { certificatePEM, certificate } = await signCSR(rootCA, csr, 365);
 
+  const fullChainPEM = `${certificatePEM}\n${rootCA.certificatePEM}`;
+  console.log(fullChainPEM);
+
   const server = Bun.serve({
     port: 0,
     fetch(req) {
-      console.log(req)
+      console.log(req);
       console.log(`Request handled in custom server for domain: ${domain}`);
 
       if (req.method === "CONNECT") {
@@ -29,7 +62,7 @@ async function createServerForDomain(domain: string): Promise<Bun.Server<unknown
     tls: {
       key: privateKeyPEM,
       // Provide the full chain: server cert followed by the root CA cert
-      cert: `${certificatePEM}\n${rootCA.certificatePEM}`,
+      cert: fullChainPEM,
     },
   });
   servers.set(domain, server);
