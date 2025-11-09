@@ -21,39 +21,56 @@ function pemToDer(pem: string): ArrayBuffer {
 }
 
 async function loadRootCA() {
-  try {
-    const certificatePEM = await Bun.file("./certs/rootCA.crt").text();
-    const privateKeyPEM = await Bun.file("./certs/rootCA.key").text();
+  const certFile = Bun.file("./certs/rootCA.crt");
+  const keyFile = Bun.file("./certs/rootCA.key");
 
-    // Convert PEM to DER before parsing
-    const certDER = pemToDer(certificatePEM);
-    const certificate = Certificate.fromBER(certDER);
+  // Check if both files exist
+  const certExists = await certFile.exists();
+  const keyExists = await keyFile.exists();
 
-    // Convert PEM to DER and import private key
-    const keyDER = pemToDer(privateKeyPEM);
-    const privateKey = await crypto.subtle.importKey(
-      "pkcs8",
-      keyDER,
-      { name: "ECDSA", namedCurve: "P-256" },
-      true,
-      ["sign"],
-    );
+  if (certExists && keyExists) {
+    try {
+      console.log("Loading existing root CA from ./certs/");
+      const certificatePEM = await certFile.text();
+      const privateKeyPEM = await keyFile.text();
 
-    return { certificatePEM, privateKeyPEM, privateKey, certificate };
-  } catch (error) {
-    console.error("Error loading root CA:", error);
-    const rootCA = await generateRootCA("CodikyoProxyRoot", 10);
+      // Convert PEM to DER before parsing
+      const certDER = pemToDer(certificatePEM);
+      const certificate = Certificate.fromBER(certDER);
 
-    return rootCA;
+      // Convert PEM to DER and import private key
+      const keyDER = pemToDer(privateKeyPEM);
+      const privateKey = await crypto.subtle.importKey(
+        "pkcs8",
+        keyDER,
+        { name: "ECDSA", namedCurve: "P-256" },
+        true,
+        ["sign"],
+      );
+
+      console.log("Successfully loaded existing root CA");
+      return { certificatePEM, privateKeyPEM, privateKey, certificate };
+    } catch (error) {
+      console.error("Error parsing existing root CA files:", error);
+      console.log("Regenerating root CA...");
+    }
+  } else {
+    console.log("Root CA files not found. Generating new root CA...");
   }
+
+  // Generate new root CA if files don't exist or couldn't be loaded
+  const rootCA = await generateRootCA("CodikyoProxyRoot", 10);
+  
+  // Write the new root CA files
+  await Bun.file("./certs/rootCA.crt").write(rootCA.certificatePEM);
+  console.log("Root CA certificate written to ./certs/rootCA.crt");
+  await Bun.file("./certs/rootCA.key").write(rootCA.privateKeyPEM);
+  console.log("Root CA private key written to ./certs/rootCA.key");
+
+  return rootCA;
 }
 
 const rootCA = await loadRootCA();
-
-Bun.file("./certs/rootCA.crt").write(rootCA.certificatePEM);
-console.log("Root CA certificate written to ./certs/rootCA.crt");
-Bun.file("./certs/rootCA.key").write(rootCA.privateKeyPEM);
-console.log("Root CA private key written to ./certs/rootCA.key");
 
 async function createServerForDomain(
   domain: string,
