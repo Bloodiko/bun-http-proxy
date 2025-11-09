@@ -26,6 +26,7 @@ Pure TypeScript MITM proxy for TCP/HTTPS connections running on Bun.
 - `index.ts` - Legacy TCP proxy implementation (reference)
 - `serve.ts` - Current implementation with dynamic TLS
 - `certs/` - Root CA & cert generation utilities
+- `target/` - HTTPS test server for proxy validation
 
 ## Usage
 
@@ -43,6 +44,23 @@ bun index.ts
 ## Setup
 
 Import generated root CA (`./certs/rootCA.crt`) into system/browser trust store for MITM functionality.
+
+## Testing
+
+```bash
+# Start test server (HTTPS on port 3001)
+bun run target
+
+# In another terminal, start proxy
+bun serve.ts
+
+# Test endpoints
+curl -k https://localhost:3001/              # Route list
+curl -k https://localhost:3001/delay/2000    # 2s delay
+curl -k https://localhost:3001/status/404    # Custom status
+```
+
+See `ARCHITECTURE.md` for detailed test infrastructure documentation.
 
 ## Requirements
 
