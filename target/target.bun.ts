@@ -1,4 +1,5 @@
 import util from "node:util";
+import { generateSelfSignedCert } from "./cert";
 
 const port = 3001;
 
@@ -26,8 +27,11 @@ const handler = async (request: Request): Promise<Response> => {
     // Root path - show available routes
     if (url.pathname === "/") {
         const routes = `
+Target Test Server - HTTPS Enabled
+===================================
+
 Available Routes:
-=================
+-----------------
 
 GET  /                     - Show this help message
 GET  /exit                 - Shut down the server
@@ -42,8 +46,10 @@ ANY  /{domain}/{path}      - Proxy request to the specified domain
      Example: /example.com/api/users
 
 Notes:
+- This server uses HTTPS with a self-signed certificate
 - The proxy route (/{domain}/{path}) works with any HTTP method (GET, POST, PUT, DELETE, etc.)
 - Streams can be monitored by connecting to /stream endpoint
+- Use 'curl -k https://localhost:${port}/' to test from command line
 `;
         return new Response(routes, {
             status: 200,
@@ -192,10 +198,24 @@ Notes:
     return response;
 };
 
-console.log(`Server is running on port ${port}`);
-console.log(`Visit http://localhost:${port}/ to see all available routes`);
+// Generate self-signed certificate
+console.log("Generating self-signed certificate...");
+const { cert, key } = await generateSelfSignedCert("localhost");
+
+console.log(`Server is running on https://localhost:${port}`);
+console.log(`Visit https://localhost:${port}/ to see all available routes`);
+console.log(
+    `\nNote: This server uses a self-signed certificate. Your browser will show a security warning.`,
+);
+console.log(
+    `In your browser, you may need to accept the certificate or use 'curl -k' to test.`,
+);
 
 Bun.serve({
     port,
     fetch: handler,
+    tls: {
+        cert,
+        key,
+    },
 });
