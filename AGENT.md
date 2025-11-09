@@ -33,3 +33,6 @@ When working on this codebase:
 
 - If needed for testing, run in background with is_background=true
 - Terminate when no longer needed
+
+**Context**:
+- Always use the .md files in agent/ as context.
