@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build:types": "tsc -p tsconfig.json",
+    "dev": "bun run --watch serve.ts",
     "target": "bun run target/target.bun.ts",
     "test": "bun test",
     "test:target": "bun test tests/target.test.ts"

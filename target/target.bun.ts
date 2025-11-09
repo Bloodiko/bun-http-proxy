@@ -10,7 +10,7 @@ const connected_streams = new Map<
 const encoder = new TextEncoder();
 
 function sendToStreams(obj: object | string) {
-    console.log(obj);
+    console.log("[Target]", obj);
     const s = typeof obj === "string" ? obj : util.inspect(obj);
     connected_streams.values().forEach((controller) => {
         controller.enqueue(encoder.encode(s + "\n"));
@@ -199,16 +199,18 @@ Notes:
 };
 
 // Generate self-signed certificate
-console.log("Generating self-signed certificate...");
+console.log("[Target] Generating self-signed certificate...");
 const { cert, key } = await generateSelfSignedCert("localhost");
 
-console.log(`Server is running on https://localhost:${port}`);
-console.log(`Visit https://localhost:${port}/ to see all available routes`);
+console.log(`[Target] Server is running on https://localhost:${port}`);
 console.log(
-    `\nNote: This server uses a self-signed certificate. Your browser will show a security warning.`,
+    `[Target] Visit https://localhost:${port}/ to see all available routes`,
 );
 console.log(
-    `In your browser, you may need to accept the certificate or use 'curl -k' to test.`,
+    `[Target] \nNote: This server uses a self-signed certificate. Your browser will show a security warning.`,
+);
+console.log(
+    `[Target] In your browser, you may need to accept the certificate or use 'curl -k' to test.`,
 );
 
 Bun.serve({
