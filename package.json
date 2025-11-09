@@ -4,10 +4,12 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build:types": "tsc -p tsconfig.json"
+    "build:types": "tsc -p tsconfig.json",
+    "target": "bun run target/target.bun.ts"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/node": "^24.10.0"
   },
   "peerDependencies": {
     "typescript": "^5"
@@ -15,7 +17,6 @@
   "dependencies": {
     "elysia": "^1.4.13",
     "pkijs": "^3.3.2"
-  }
-  ,
+  },
   "types": "dist/index.d.ts"
 }
