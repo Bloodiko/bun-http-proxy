@@ -47,6 +47,19 @@ Import generated root CA (`./certs/rootCA.crt`) into system/browser trust store 
 
 ## Testing
 
+### Automated Tests
+```bash
+# Terminal 1 - Start target server first
+bun run target
+
+# Terminal 2 - Run tests
+bun test              # Run all tests
+bun test:target       # Run target server tests only
+```
+
+Tests require target server running on port 3001.
+
+### Manual Testing
 ```bash
 # Start test server (HTTPS on port 3001)
 bun run target
@@ -60,7 +73,7 @@ curl -k https://localhost:3001/delay/2000    # 2s delay
 curl -k https://localhost:3001/status/404    # Custom status
 ```
 
-See `ARCHITECTURE.md` for detailed test infrastructure documentation.
+See `agent/ARCHITECTURE.md` for detailed test infrastructure documentation.
 
 ## Requirements
 
