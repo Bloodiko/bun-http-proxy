@@ -1,6 +1,6 @@
 
-import {generateRootCA} from "./certs/rootCA";
-import {createCSR, signCSR} from "./certs/serverCert";
+import {generateRootCA} from "./src/certs/rootCA";
+import {createCSR, signCSR} from "./src/certs/serverCert";
 import { Certificate } from "pkijs";
 
 const servers = new Map<string, Bun.Server<unknown>>();
