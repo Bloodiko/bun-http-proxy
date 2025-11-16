@@ -86,7 +86,7 @@ async function createServerForDomain(
   console.log(fullChainPEM);
 
   const server = Bun.serve({
-    port: 0,
+    unix: `sockets/${domain}.sock`,
     fetch(req) {
       console.log(req);
       console.log(`Request handled in custom server for domain: ${domain}`);
@@ -97,17 +97,17 @@ async function createServerForDomain(
         });
       }
 
-      return new Response("Hello, World!");
+      return new Response("Hello, from Proxy intercept!");
     },
     tls: {
       key: privateKeyPEM,
       // Provide the full chain: server cert followed by the root CA cert
       cert: fullChainPEM,
     },
-  });
+  }); 
   servers.set(domain, server);
   console.log(
-    `Created HTTPS server for domain: https://${domain}:${server.port}`,
+    `Created HTTPS server for domain: https://${domain} (unix socket: sockets/${domain}.sock)`,
   );
   return server;
 }
