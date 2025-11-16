@@ -1,0 +1,5 @@
+Step 0: Reorganize cert code structure - Done
+- Moved certs/rootCA.ts to src/certs/rootCA.ts
+- Moved certs/serverCert.ts to src/certs/serverCert.ts
+- Updated imports in serve.ts
+- Updated .gitignore
